@@ -1,0 +1,14 @@
+#summary Compilation and Execution of the code
+
+= Within ROOT =
+
+root [0]  .x FBI3D.C+(“file.root”, “norm.root”)
+
+= Outside ROOT =
+
+g++ -w -Wl,--no-as-needed FBI3D.C -o FBI3D.x `root-config --cflags --glibs`
+
+./FBI3D.x  file.root  norm.root
+
+where root-config is a small utility in $ROOTSYS/bin that knows the
+right compiler/linker sequence for your machine.
