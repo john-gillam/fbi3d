@@ -2,7 +2,7 @@
 
 = Within ROOT =
 
-root [0]  .x FBI3D.C+(“file.root”, “norm.root”)
+.x FBI3D.C+(“file.root”, “norm.root”)
 
 = Outside ROOT =
 
