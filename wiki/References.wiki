@@ -2,16 +2,16 @@
 
 = References =
 
- 1) S. Jan et al. Phys. Med. Biol. 49 4543(2004)
+  1) S. Jan et al. Phys. Med. Biol. 49 4543(2004)
 
- 2) http://stir.sourceforge.net
+  2) http://stir.sourceforge.net
 
- 3) www.opengatecollaboration.org
+  3) www.opengatecollaboration.org
 
- 4) A. Sitek - Phys. Med. Biol. 53, 3201-3216 (2008).
+  4) A. Sitek - Phys. Med. Biol. 53, 3201-3216 (2008).
 
- 5) A. Sitek - Phys. Med. Biol. 57 (21), 6779 (2012).
+  5) A. Sitek - Phys. Med. Biol. 57 (21), 6779 (2012).
 
- 6) https://code.google.com/p/fbi3d/
+  6) https://code.google.com/p/fbi3d/
 
- 7) J. L.Herraiz – MICCAI, CMMI 2014
+  7) J. L.Herraiz – MICCAI, CMMI 2014
