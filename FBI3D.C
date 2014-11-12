@@ -1,8 +1,12 @@
 // Macro to reconstruct List Mode Data from GATE simulations in ROOT files
 //
-// 29 April 2014. V0.0 J.L. Herraiz et al.
+// 29 April 2014. V0.0 J.L. Herraiz and A. Sitek
 // 30 Oct 2014,   V0.1
-// 
+// --------------------------------------------------------------------
+// This code was developed with the goal to be a useful tool for GATE users
+//  and researchers working on PET image reconstruction
+// Please contact the authors if you want to help in its development
+// herraiz@mit.edu 
 
 #include <stdio.h>
 #include <math.h>
@@ -16,44 +20,40 @@ using namespace std;
 #include <TChain.h>
 #include <TFile.h>
 #include <TDirectory.h>
-//#include <TRandom.h>
 
 //---------- VARIABLES -------------------
 Int_t    niter=99;
-Int_t    REITER=1;
-Int_t    freq_filt = 10;              // Every 'freq_filt' iterations the image is smoothed
-Float_t  Scanner = 824.0;                    // Diameter of the scanner (mm)
-Float_t  FOV_XY=258.0, FOV_Z=130.0;          // Size of Reconstructed Image (mm)
-Int_t    RES=75, NZS=61;                       // Dimensions
+Float_t  Scanner = 800.0;                    // Default Diameter of the scanner (mm) (it is adapted automatically based on the root file)
+Float_t  FOV_Z=130.0;                        // Default Axial FOV (Obtained later based on the root file)
+Float_t  FOV_XY=250.0;                       // Size of Reconstructed Image (mm)
+Int_t    RES=75, NZS=61;                     // Image Dimensions
 Int_t    nvoxels=RES*RES*NZS;
 Int_t*   IMG = (Int_t*)malloc(nvoxels*sizeof(Int_t));
 Float_t* IMG_N = (Float_t*)malloc(nvoxels*sizeof(Float_t));
 Float_t* SENS = (Float_t*)malloc(nvoxels*sizeof(Float_t));
 Float_t  dxy = float(RES)/FOV_XY;
-Float_t  dz = float(NZS)/FOV_Z;
+Float_t  dz = float(NZS)/FOV_Z;             // Default value
 Float_t  RESM = 0.5*RES, NZM=0.5*NZS;
 Int_t    ncoinc;
 Float_t  source_X, source_Y, source_Z;
 Float_t  det1_X, det1_Y, det1_Z;
 Float_t  det2_X, det2_Y, det2_Z;
 Int_t    b1, b2, c1, c2;
-Int_t    MaxNCoinc = 9e7;
-Int_t*   POS = (Int_t*)malloc(MaxNCoinc*sizeof(Int_t));
-Int_t ix,iy,iz,iV;
-Int_t indx;
+Int_t    ix,iy,iz,iV;
+Int_t    indx;
 
 //--------- FUNCTIONS ------------------
 void define_branches(TTree *nt);
 Int_t Arek(Int_t posic, Float_t det1_X,Float_t det1_Y,Float_t det1_Z,Float_t det2_X,Float_t det2_Y,Float_t det2_Z, Int_t* IMG, Float_t* SENS);
-Int_t FiltPOS(Int_t posic, Int_t* IMG, Float_t* SENS);
-Float_t* FiltIMG(Float_t* IMG, int nt);
 Float_t* MedianIMG(Float_t* IMG);
 Float_t* normalization(TString namefile2, int nt);
+Float_t* FiltNorm(Float_t* IMG, int nt);
 
 //--------------------------------------
-//int FB(TString namefile="", TString namefile2=""){
 void FBI3D(TString namefile="", TString namefile2=""){
 
+  Int_t    MaxNCoinc = 9e7;
+  Int_t*   POS = (Int_t*)malloc(MaxNCoinc*sizeof(Int_t));
   FILE* fichero;
   FILE* fichero2;
 
@@ -61,7 +61,7 @@ void FBI3D(TString namefile="", TString namefile2=""){
 
 // === STEP 1 === NORMALIZATION ================
 
-if (namefile2=="normf.raw"){
+if (namefile2=="normf.raw"){   // Allows reusing previous normalization image
   cout << "Using precalculated Normalization file" << endl;
   fichero2 = fopen(namefile2,"rb");
   fread(SENS,sizeof(float),nvoxels,fichero2);
@@ -69,7 +69,8 @@ if (namefile2=="normf.raw"){
 }else{          // Create normalization from ROOT file (filtered to reduce noise)  
   int nt = 10;  // Number of filter iterations
   SENS = normalization(namefile2,nt);
-  fichero2 = fopen("normf.raw","wb");
+  // Storing the normalization image so that it can be used for other reconstructions of this scanner
+  fichero2 = fopen("normf.raw","wb");    
   fwrite(SENS,sizeof(float),nvoxels,fichero2);
   fclose(fichero2);
 }
@@ -82,6 +83,9 @@ if (namefile2=="normf.raw"){
  ncoinc = Coincidences->GetEntries();
  cout << "Simulated Coincidences = " << ncoinc << endl;
  define_branches(Coincidences);
+ Scanner = (Coincidences->GetMaximum("globalPosX1")) - (Coincidences->GetMinimum("globalPosX1")); // Diameter of the scanner from the detected counts
+ FOV_Z = (Coincidences->GetMaximum("globalPosZ1")) - (Coincidences->GetMinimum("globalPosZ1"));
+ dz = float(NZS)/FOV_Z;  
 
 // === STEP 3 === REFERENCE IMAGE (OPTIONAL) ====
 
@@ -101,33 +105,27 @@ fichero = fopen("image_ref.raw","wb");
 fwrite(IMG_N,sizeof(float),nvoxels,fichero);
 fclose(fichero);
 
- Float_t sens_corr = 0.;
+Float_t sens_corr = 0.;
 for(Int_t iV=0; iV<nvoxels ; iV++){
-  sens_corr = SENS[iV];
-  if (sens_corr>0){sens_corr = 1.0/sens_corr;}
-  IMG_N[iV]*=sens_corr;
+ sens_corr = SENS[iV];
+ if (sens_corr>0){sens_corr = 1.0/sens_corr;}
+ IMG_N[iV]*=sens_corr;
 }  // Reference image corrected by sensitivity
 fichero = fopen("image_ref_senscor.raw","wb");
 fwrite(IMG_N,sizeof(float),nvoxels,fichero);
 fclose(fichero);
 
 // === STEP 4 === INITIAL IMAGE ================
-
 for(Int_t iV=0; iV<nvoxels ; iV++){IMG[iV]=0;}  // Initial Image
-for(Int_t iV=0; iV<ncoinc*REITER ; iV++){POS[iV]=-1;}  // Initial Position
+for(Int_t iV=0; iV<ncoinc; iV++){POS[iV]=-1;}  // Initial Position
 
 // === STEP 5 === ITERATIONS ==================
 for(Int_t iter=1; iter<=niter ; iter++){        // Iterations (1 iteration consists of a whole loop over all data)
-for(Int_t ic = 0;  ic<ncoinc*REITER;  ic++){      // We can loop several times (REITER) over the data in the same iteration 
- indx = ic%ncoinc;
- Coincidences->GetEntry(indx); 
- if( ic % 10000 == 0 ) cout << "iter= " << iter << " read  " << ic << " coincidences " << endl;  
- posic = POS[ic]; 
- if (iter==2 || iter%freq_filt==0) {
-  POS[ic] = FiltPOS(posic,IMG,SENS);        // Regularization Step
- }else{		  
+for(Int_t ic = 0;  ic<ncoinc;  ic++){     
+ Coincidences->GetEntry(ic); 
+ if ( ic % 100000 == 0 ) cout << "Iter= " << iter << " Processing " << ic << " coincidences " << endl;  
+  posic = POS[ic]; 
   POS[ic] = Arek(posic,det1_X,det1_Y,det1_Z,det2_X,det2_Y,det2_Z,IMG,SENS);
- }
  } // COINCIDENCES
 } // ITERATIONS
 
@@ -207,9 +205,9 @@ Int_t Arek(int ipos1, Float_t det1_X,Float_t det1_Y,Float_t det1_Z,Float_t det2_
        y0 = det1_Y + lambda*deltay;
        z0 = det1_Z + lambda*deltaz;
  
-       ix = int(x0*dxy + RESM) + rand()%3 -1;
-       iy = int(y0*dxy + RESM) + rand()%3 -1;
-       iz = int(z0*dz + NZM)   + rand()%3 -1;       
+       ix = int(x0*dxy + RESM) + int((rand()%5 -2)/2);
+       iy = int(y0*dxy + RESM) + int((rand()%5 -2)/2);
+       iz = int(z0*dz + NZM)   + int((rand()%5 -2)/2);       
 
        if (ix>=0 && ix<RES && iy>=0 && iy<RES && iz>=0 && iz<NZS){   // Check voxel valid	 
         ipos2 = iz*RES*RES+iy*RES+ix;
@@ -237,36 +235,10 @@ Int_t Arek(int ipos1, Float_t det1_X,Float_t det1_Y,Float_t det1_Z,Float_t det2_
        return ipos1;
 }
 
-// --------------------------------------------------------------------
-// --------------------------------------------------------------------
-// SMOOTHING THE DISTRIBUTION OF COUNTS - THE VOXEL IS LOCATED ALONG THE NEIGHBOUR VOXELS TO MAKE IT MORE UNIFORM
-
-Int_t FiltPOS(int ipos1, Int_t* IMG,Float_t* SENS){
-       
-     Int_t ix,iy,iz;
-     Int_t ipos2;
-     Float_t dist,rval1,rval2,sens1,sens2,prob,ran;
-
-     if (ipos1<0 || IMG[ipos1]<0) {return ipos1;}                   
-     ix = rand()%3 -1;
-     iy = rand()%3 -1;
-     iz = rand()%3 -1;      
-        
-     ipos2 = ipos1 + iz*RES*RES + iy*RES + ix;
-     if (ipos2<0 || ipos2>=nvoxels) {return ipos1;}
-     if (IMG[ipos1]>=1){
-      IMG[ipos1]--;
-      IMG[ipos2]++;
-      ipos1 = ipos2;
-     }    
-
-     return ipos1;
-}
-
 // ------------------ NORMALIZATION ----------------------------
 
 Float_t* normalization(TString namefile2, int nt){
-
+ 
  TFile *f2 = new TFile(namefile2,"READ");
  
  TTree *Coincidences2 = (TTree*)f2->Get("Coincidences"); 
@@ -287,12 +259,12 @@ Float_t* normalization(TString namefile2, int nt){
  }
  
  f2->Close();
- SENS = FiltIMG(IMG_N,nt);
+ SENS = FiltNorm(IMG_N,nt);  // Optional, to avoid noise from normalization
  return SENS;
 }
 
 // -------------------- FILTER IMAGES ----------------------------
-Float_t* FiltIMG(Float_t* IMG, int nt){
+Float_t* FiltNorm(Float_t* IMG, int nt){
 
   Float_t* IMG_NF = (Float_t*)malloc(nvoxels*sizeof(Float_t));
   Int_t II,JJ,KK,iV,iVV;
@@ -392,7 +364,7 @@ Float_t* MedianIMG(Float_t* IMG){
  }
  } // VOXELS' LOOPS
  
- for (int iV=0;iV<nvoxels;iV++){IMG[iV]=IMG_NF[iV];}
+ for (int iV=0;iV<nvoxels;iV++){IMG[iV]=0.5*IMG_NF[iV] + 0.5*IMG[iV];}
   
 return IMG;
 }
